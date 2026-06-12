@@ -71,12 +71,18 @@ class SpeechTests(unittest.TestCase):
 
     def test_powershell_command_contains_message(self):
         command = _powershell_speech_command("No entendi", 175, 1.0, "latin")
-        self.assertIn("$speaker.Speak('No entendi')", command)
+        self.assertIn("$message = 'No entendi'", command)
+        self.assertIn("$speaker.Speak($message)", command)
 
     def test_latin_voice_terms_prefer_mexican_spanish(self):
         terms = voice_preference_terms("latin")
 
         self.assertLess(terms.index("es-mx"), terms.index("spanish"))
+
+    def test_specific_modern_voice_line_prefers_voice_name(self):
+        terms = voice_preference_terms("Microsoft Raul [es-MX] Male (modern)")
+
+        self.assertLess(terms.index("raul"), terms.index("es-mx"))
 
     def test_select_voice_prefers_latin_before_generic_spanish(self):
         engine = FakeEngine()

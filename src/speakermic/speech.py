@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import os
 import queue
+import re
 import subprocess
 from threading import Event, Thread
 from typing import Any, Callable
@@ -221,17 +222,40 @@ def voice_preference_terms(preferred_name: str) -> list[str]:
     if preferred_name in {"spanish", "espanol", "español", "latin", "latam", "latino", "latina"}:
         return latin_terms + ["spanish", "es-"]
 
-    return [preferred_name] + latin_terms + ["spanish", "es-"]
+    specific_terms = [
+        term
+        for term in re.findall(r"[a-z]+(?:-[a-z]+)?", preferred_name)
+        if term not in {"microsoft", "desktop", "modern", "male", "female", "voice"}
+    ]
+    return _unique_terms([preferred_name] + specific_terms + latin_terms + ["spanish", "es-"])
+
+
+def _unique_terms(terms: list[str]) -> list[str]:
+    unique = []
+    for term in terms:
+        if term and term not in unique:
+            unique.append(term)
+    return unique
 
 
 def installed_windows_voices() -> list[str]:
     command = (
+        "$voices = @(); "
+        "try { "
+        "Add-Type -AssemblyName System.Runtime.WindowsRuntime; "
+        "$null = [Windows.Media.SpeechSynthesis.SpeechSynthesizer, Windows.Media.SpeechSynthesis, ContentType = WindowsRuntime]; "
+        "$voices += [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices | "
+        "ForEach-Object { \"$($_.DisplayName) [$($_.Language)] $($_.Gender) (modern)\" }; "
+        "} catch {} "
+        "try { "
         "Add-Type -AssemblyName System.Speech; "
         "$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-        "$speaker.GetInstalledVoices() | ForEach-Object { "
-        "\"$($_.VoiceInfo.Name) [$($_.VoiceInfo.Culture.Name)]\" "
+        "$voices += $speaker.GetInstalledVoices() | ForEach-Object { "
+        "\"$($_.VoiceInfo.Name) [$($_.VoiceInfo.Culture.Name)] (desktop)\" "
         "}; "
-        "$speaker.Dispose();"
+        "$speaker.Dispose(); "
+        "} catch {} "
+        "$voices | Select-Object -Unique;"
     )
     kwargs = {
         "check": False,
@@ -278,11 +302,55 @@ def _powershell_speech_command(message: str, rate: int, volume: float, preferred
     sapi_volume = max(0, min(100, round(volume * 100)))
 
     return (
+        "$ErrorActionPreference = 'Stop'; "
+        f"$message = {escaped_message}; "
+        f"$preferredTerms = @({escaped_preferred_terms}); "
+        f"$sapiRate = {sapi_rate}; "
+        f"$sapiVolume = {sapi_volume}; "
+        "try { "
+        "Add-Type -AssemblyName System.Runtime.WindowsRuntime; "
+        "$null = [Windows.Media.SpeechSynthesis.SpeechSynthesizer, Windows.Media.SpeechSynthesis, ContentType = WindowsRuntime]; "
+        "$null = [Windows.Storage.Streams.DataReader, Windows.Storage.Streams, ContentType = WindowsRuntime]; "
+        "$asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { "
+        "$_.Name -eq 'AsTask' -and $_.IsGenericMethodDefinition -and "
+        "$_.GetGenericArguments().Count -eq 1 -and $_.GetParameters().Count -eq 1 "
+        "} | Select-Object -First 1; "
+        "$voice = $null; "
+        "foreach ($preferred in $preferredTerms) { "
+        "$voice = [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::AllVoices | Where-Object { "
+        "$_.DisplayName.ToLower().Contains($preferred) -or "
+        "$_.Language.ToLower().Contains($preferred) -or "
+        "$_.Gender.ToString().ToLower().Contains($preferred) "
+        "} | Select-Object -First 1; "
+        "if ($voice) { break } "
+        "} "
+        "if ($voice) { "
+        "$synth = [Windows.Media.SpeechSynthesis.SpeechSynthesizer]::new(); "
+        "$synth.Voice = $voice; "
+        "$speechTask = $asTask.MakeGenericMethod([Windows.Media.SpeechSynthesis.SpeechSynthesisStream]).Invoke("
+        "$null, @($synth.SynthesizeTextToStreamAsync($message))); "
+        "$speechStream = $speechTask.GetAwaiter().GetResult(); "
+        "$reader = [Windows.Storage.Streams.DataReader]::new($speechStream.GetInputStreamAt(0)); "
+        "$size = [uint32]$speechStream.Size; "
+        "$loadTask = $asTask.MakeGenericMethod([uint32]).Invoke($null, @($reader.LoadAsync($size))); "
+        "$loadTask.GetAwaiter().GetResult() | Out-Null; "
+        "$bytes = New-Object byte[] $size; "
+        "$reader.ReadBytes($bytes); "
+        "$temp = [System.IO.Path]::ChangeExtension([System.IO.Path]::GetTempFileName(), 'wav'); "
+        "[System.IO.File]::WriteAllBytes($temp, $bytes); "
+        "$player = New-Object System.Media.SoundPlayer($temp); "
+        "$player.PlaySync(); "
+        "$reader.Dispose(); "
+        "$speechStream.Dispose(); "
+        "$synth.Dispose(); "
+        "Remove-Item -LiteralPath $temp -Force; "
+        "exit 0; "
+        "} "
+        "} catch {} "
         "Add-Type -AssemblyName System.Speech; "
         "$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-        f"$speaker.Rate = {sapi_rate}; "
-        f"$speaker.Volume = {sapi_volume}; "
-        f"$preferredTerms = @({escaped_preferred_terms}); "
+        "$speaker.Rate = $sapiRate; "
+        "$speaker.Volume = $sapiVolume; "
         "foreach ($preferred in $preferredTerms) { "
         "$voice = $speaker.GetInstalledVoices() | Where-Object { "
         "$_.VoiceInfo.Name.ToLower().Contains($preferred) -or "
@@ -290,7 +358,7 @@ def _powershell_speech_command(message: str, rate: int, volume: float, preferred
         "} | Select-Object -First 1; "
         "if ($voice) { $speaker.SelectVoice($voice.VoiceInfo.Name); break } "
         "} "
-        f"$speaker.Speak({escaped_message}); "
+        "$speaker.Speak($message); "
         "$speaker.Dispose();"
     )
 
