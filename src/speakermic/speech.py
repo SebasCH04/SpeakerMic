@@ -185,23 +185,95 @@ def spoken_message(message: str) -> str:
     return message
 
 
-def _select_voice(engine, preferred_name: str) -> None:
+def voice_preference_terms(preferred_name: str) -> list[str]:
     preferred_name = preferred_name.lower().strip()
+    latin_terms = [
+        "es-mx",
+        "mexico",
+        "mexican",
+        "sabina",
+        "es-cr",
+        "costa rica",
+        "es-co",
+        "colombia",
+        "es-ar",
+        "argentina",
+        "es-cl",
+        "chile",
+        "es-pe",
+        "peru",
+        "es-ve",
+        "venezuela",
+        "es-us",
+        "united states",
+        "helena",
+        "pablo",
+        "laura",
+        "latin",
+        "latam",
+        "latino",
+        "latina",
+    ]
+
     if not preferred_name:
+        return []
+
+    if preferred_name in {"spanish", "espanol", "español", "latin", "latam", "latino", "latina"}:
+        return latin_terms + ["spanish", "es-"]
+
+    return [preferred_name] + latin_terms + ["spanish", "es-"]
+
+
+def installed_windows_voices() -> list[str]:
+    command = (
+        "Add-Type -AssemblyName System.Speech; "
+        "$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+        "$speaker.GetInstalledVoices() | ForEach-Object { "
+        "\"$($_.VoiceInfo.Name) [$($_.VoiceInfo.Culture.Name)]\" "
+        "}; "
+        "$speaker.Dispose();"
+    )
+    kwargs = {
+        "check": False,
+        "capture_output": True,
+        "text": True,
+    }
+    if hasattr(subprocess, "CREATE_NO_WINDOW"):
+        kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    completed = subprocess.run(
+        [
+            "powershell",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ],
+        **kwargs,
+    )
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def _select_voice(engine, preferred_name: str) -> None:
+    preferred_terms = voice_preference_terms(preferred_name)
+    if not preferred_terms:
         return
 
-    for voice in engine.getProperty("voices"):
-        name = getattr(voice, "name", "").lower()
-        voice_id = getattr(voice, "id", "").lower()
-        languages = " ".join(str(language).lower() for language in getattr(voice, "languages", []))
-        if preferred_name in name or preferred_name in voice_id or preferred_name in languages:
-            engine.setProperty("voice", voice.id)
-            return
+    voices = engine.getProperty("voices")
+    for preferred_term in preferred_terms:
+        for voice in voices:
+            name = getattr(voice, "name", "").lower()
+            voice_id = getattr(voice, "id", "").lower()
+            languages = " ".join(str(language).lower() for language in getattr(voice, "languages", []))
+            if preferred_term in name or preferred_term in voice_id or preferred_term in languages:
+                engine.setProperty("voice", voice.id)
+                return
 
 
 def _powershell_speech_command(message: str, rate: int, volume: float, preferred_name: str) -> str:
     escaped_message = _powershell_single_quoted(message)
-    escaped_preferred_name = _powershell_single_quoted(preferred_name.lower().strip())
+    escaped_preferred_terms = ", ".join(_powershell_single_quoted(term) for term in voice_preference_terms(preferred_name))
     sapi_rate = max(-10, min(10, round((rate - 175) / 20)))
     sapi_volume = max(0, min(100, round(volume * 100)))
 
@@ -210,13 +282,13 @@ def _powershell_speech_command(message: str, rate: int, volume: float, preferred
         "$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
         f"$speaker.Rate = {sapi_rate}; "
         f"$speaker.Volume = {sapi_volume}; "
-        f"$preferred = {escaped_preferred_name}; "
-        "if ($preferred) { "
-        "$voice = $speaker.GetInstalledVoices() | "
-        "Where-Object { $_.VoiceInfo.Name.ToLower().Contains($preferred) -or "
-        "$_.VoiceInfo.Culture.Name.ToLower().Contains($preferred) } | "
-        "Select-Object -First 1; "
-        "if ($voice) { $speaker.SelectVoice($voice.VoiceInfo.Name) } "
+        f"$preferredTerms = @({escaped_preferred_terms}); "
+        "foreach ($preferred in $preferredTerms) { "
+        "$voice = $speaker.GetInstalledVoices() | Where-Object { "
+        "$_.VoiceInfo.Name.ToLower().Contains($preferred) -or "
+        "$_.VoiceInfo.Culture.Name.ToLower().Contains($preferred) "
+        "} | Select-Object -First 1; "
+        "if ($voice) { $speaker.SelectVoice($voice.VoiceInfo.Name); break } "
         "} "
         f"$speaker.Speak({escaped_message}); "
         "$speaker.Dispose();"

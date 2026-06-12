@@ -13,7 +13,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.app.hotkey, "<ctrl>+<alt>+<space>")
         self.assertEqual(config.spotify.redirect_uri, "http://127.0.0.1:8888/callback")
         self.assertTrue(config.speech.enabled)
-        self.assertEqual(config.speech.voice_name_contains, "spanish")
+        self.assertEqual(config.speech.voice_name_contains, "latin")
         self.assertFalse(config.activation.wake_word_enabled)
         self.assertEqual(config.activation.wake_word, "consola")
 

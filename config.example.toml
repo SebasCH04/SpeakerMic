@@ -6,7 +6,7 @@ volume_step = 10
 
 [speech]
 enabled = true
-voice_name_contains = "spanish"
+voice_name_contains = "latin"
 rate = 175
 volume = 1.0
 

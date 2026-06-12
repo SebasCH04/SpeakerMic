@@ -5,9 +5,11 @@ from speakermic.speech import (
     NullSpeaker,
     SystemSpeaker,
     WindowsPowerShellSpeaker,
+    _select_voice,
     _powershell_single_quoted,
     _powershell_speech_command,
     spoken_message,
+    voice_preference_terms,
 )
 
 
@@ -30,6 +32,13 @@ class FakeEngine:
 
     def runAndWait(self):  # noqa: N802
         return
+
+
+class FakeVoice:
+    def __init__(self, voice_id, name, languages=None):
+        self.id = voice_id
+        self.name = name
+        self.languages = languages or []
 
 
 class SpeechTests(unittest.TestCase):
@@ -61,8 +70,24 @@ class SpeechTests(unittest.TestCase):
         self.assertEqual(_powershell_single_quoted("pa'lante"), "'pa''lante'")
 
     def test_powershell_command_contains_message(self):
-        command = _powershell_speech_command("No entendi", 175, 1.0, "spanish")
+        command = _powershell_speech_command("No entendi", 175, 1.0, "latin")
         self.assertIn("$speaker.Speak('No entendi')", command)
+
+    def test_latin_voice_terms_prefer_mexican_spanish(self):
+        terms = voice_preference_terms("latin")
+
+        self.assertLess(terms.index("es-mx"), terms.index("spanish"))
+
+    def test_select_voice_prefers_latin_before_generic_spanish(self):
+        engine = FakeEngine()
+        engine.voices = [
+            FakeVoice("generic", "Microsoft Spanish Voice", ["es-ES"]),
+            FakeVoice("sabina", "Microsoft Sabina", ["es-MX"]),
+        ]
+
+        _select_voice(engine, "latin")
+
+        self.assertEqual(engine.properties["voice"], "sabina")
 
     def test_transport_messages_are_translated(self):
         self.assertEqual(spoken_message("Paused Spotify."), "Pausado.")

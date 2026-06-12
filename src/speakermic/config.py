@@ -26,7 +26,7 @@ class SpotifyConfig:
 @dataclass(frozen=True)
 class SpeechConfig:
     enabled: bool = True
-    voice_name_contains: str = "spanish"
+    voice_name_contains: str = "latin"
     rate: int = 175
     volume: float = 1.0
 

@@ -8,7 +8,7 @@ import shutil
 from .actions import execute_command
 from .commands import parse_command
 from .config import load_config
-from .speech import create_speaker, spoken_message
+from .speech import create_speaker, installed_windows_voices, spoken_message
 from .spotify import SpotifyApiError, SpotifyAuthError, SpotifyClient
 from .tray_app import SpeakerMicTrayApp, TrayAppError
 from .voice import VoiceCaptureConfig, VoiceRecognitionError, VoskVoiceRecognizer, download_spanish_model
@@ -25,6 +25,7 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("spotify-status", help="Show account and playback status.")
     subparsers.add_parser("download-model", help="Download the default offline Spanish Vosk model.")
     subparsers.add_parser("speak-test", help="Speak a short local text-to-speech test.")
+    subparsers.add_parser("speech-voices", help="List installed Windows text-to-speech voices.")
     subparsers.add_parser("listen-once", help="Listen through the microphone and print recognized text.")
     subparsers.add_parser("listen-command", help="Listen once, parse the command, and control Spotify.")
     subparsers.add_parser("tray", help="Run the tray app with the configured hotkey.")
@@ -75,6 +76,15 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             speaker.close()
         print("Speech test complete.")
+        return 0
+
+    if args.command == "speech-voices":
+        voices = installed_windows_voices()
+        if not voices:
+            print("No Windows speech voices found.")
+            return 1
+        for voice in voices:
+            print(voice)
         return 0
 
     if args.command == "listen-once":

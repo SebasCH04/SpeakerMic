@@ -9,7 +9,7 @@ control requires a Spotify Premium account.
 
 ## What It Can Do
 
-- Pause, resume, skip, go back, and change Spotify volume.
+- Pause, resume, skip, go back, and change Spotify volume in Spanish or English.
 - Play a song or playlist by voice.
 - Listen with `Ctrl+Alt+Space`.
 - Optionally listen for a wake word like `consola`.
@@ -28,6 +28,12 @@ sube volumen
 baja volumen
 pon cancion blinding lights
 pon playlist rock clasico
+play
+pause
+next song
+previous song
+set volume to fifty
+play song blinding lights
 ```
 
 SpeakerMic also accepts common variants and imperfect transcriptions such as `silencio`,
@@ -115,6 +121,22 @@ Test the spoken response:
 ```powershell
 python -m speakermic speak-test
 ```
+
+List installed Windows voices:
+
+```powershell
+python -m speakermic speech-voices
+```
+
+By default SpeakerMic tries to use a Latin American Spanish voice first:
+
+```toml
+[speech]
+voice_name_contains = "latin"
+```
+
+If you see a voice you prefer in `speech-voices`, put part of its name or culture there,
+for example `sabina`, `mexico`, or `es-mx`.
 
 ## Use The Tray App
 

@@ -28,17 +28,59 @@ class VoiceCommand:
 
 _NUMBER_WORDS = {
     "cero": 0,
+    "zero": 0,
     "diez": 10,
+    "ten": 10,
     "veinte": 20,
+    "twenty": 20,
     "treinta": 30,
+    "thirty": 30,
     "cuarenta": 40,
+    "forty": 40,
     "cincuenta": 50,
+    "fifty": 50,
     "sesenta": 60,
+    "sixty": 60,
     "setenta": 70,
+    "seventy": 70,
     "ochenta": 80,
+    "eighty": 80,
     "noventa": 90,
+    "ninety": 90,
     "cien": 100,
+    "one hundred": 100,
+    "hundred": 100,
 }
+
+_PLAYLIST_PREFIXES = (
+    "pon playlist",
+    "reproduce playlist",
+    "reproducir playlist",
+    "pon la playlist",
+    "play playlist",
+    "play the playlist",
+    "start playlist",
+    "start the playlist",
+)
+
+_TRACK_PREFIXES = (
+    "pon cancion",
+    "reproduce cancion",
+    "reproducir cancion",
+    "pon la cancion",
+    "reproduce la cancion",
+    "reproducir la cancion",
+    "play song",
+    "play the song",
+    "play track",
+    "play the track",
+    "start song",
+    "start the song",
+    "put song",
+    "put the song",
+)
+
+_GENERIC_TRACK_PREFIXES = ("pon",)
 
 _PLAY_PHRASES = (
     "sigue",
@@ -46,6 +88,11 @@ _PLAY_PHRASES = (
     "continua",
     "continuar",
     "continue",
+    "resume",
+    "start",
+    "start music",
+    "play music",
+    "play the music",
     "reanuda",
     "reanudar",
     "reproduce",
@@ -73,6 +120,10 @@ _PLAY_WORDS = (
     "producir",
     "produsir",
     "play",
+    "pley",
+    "resume",
+    "resum",
+    "start",
 )
 
 _PAUSE_PHRASES = (
@@ -83,6 +134,11 @@ _PAUSE_PHRASES = (
     "para",
     "parar",
     "stop",
+    "pause",
+    "pause music",
+    "pause the music",
+    "stop music",
+    "stop the music",
     "alto",
     "calla",
     "silencio",
@@ -101,6 +157,8 @@ _PAUSE_WORDS = (
     "para",
     "parar",
     "stop",
+    "pause",
+    "paus",
     "alto",
     "calla",
     "silencio",
@@ -117,6 +175,14 @@ _NEXT_PHRASES = (
     "pasala",
     "pasar cancion",
     "siguiente cancion",
+    "next",
+    "next song",
+    "next track",
+    "skip",
+    "skip song",
+    "skip track",
+    "change song",
+    "change track",
 )
 
 _NEXT_WORDS = (
@@ -131,6 +197,9 @@ _NEXT_WORDS = (
     "salta",
     "pasala",
     "pasar",
+    "next",
+    "skip",
+    "change",
 )
 
 _PREVIOUS_PHRASES = (
@@ -143,6 +212,11 @@ _PREVIOUS_PHRASES = (
     "devuelvete",
     "vuelve",
     "atras",
+    "previous",
+    "previous song",
+    "previous track",
+    "back",
+    "go back",
 )
 
 _PREVIOUS_WORDS = (
@@ -154,10 +228,13 @@ _PREVIOUS_WORDS = (
     "devuelvete",
     "vuelve",
     "atras",
+    "previous",
+    "prev",
+    "back",
 )
 
-_VOLUME_WORDS_UP = ("sube", "subir", "aumenta", "aumentar", "mas", "alto")
-_VOLUME_WORDS_DOWN = ("baja", "bajar", "disminuye", "disminuir", "menos")
+_VOLUME_WORDS_UP = ("sube", "subir", "aumenta", "aumentar", "mas", "alto", "up", "raise", "increase", "louder")
+_VOLUME_WORDS_DOWN = ("baja", "bajar", "disminuye", "disminuir", "menos", "down", "lower", "decrease", "quieter")
 
 
 def normalize_text(text: str) -> str:
@@ -173,9 +250,13 @@ def parse_command(text: str) -> VoiceCommand | None:
     if not normalized:
         return None
 
-    playlist = _extract_after(normalized, ("pon playlist", "reproduce playlist", "reproducir playlist", "pon la playlist"))
+    playlist = _extract_after(normalized, _PLAYLIST_PREFIXES)
     if playlist:
         return VoiceCommand(CommandType.PLAY_PLAYLIST, playlist, raw_text=text)
+
+    track = _extract_after(normalized, _TRACK_PREFIXES)
+    if track:
+        return VoiceCommand(CommandType.PLAY_TRACK, track, raw_text=text)
 
     if _matches_command(normalized, _PLAY_PHRASES, _PLAY_WORDS):
         return VoiceCommand(CommandType.PLAY, raw_text=text)
@@ -199,18 +280,7 @@ def parse_command(text: str) -> VoiceCommand | None:
     if _matches_relative_volume(normalized, _VOLUME_WORDS_DOWN):
         return VoiceCommand(CommandType.VOLUME_DOWN, raw_text=text)
 
-    track = _extract_after(
-        normalized,
-        (
-            "pon cancion",
-            "reproduce cancion",
-            "reproducir cancion",
-            "pon la cancion",
-            "reproduce la cancion",
-            "reproducir la cancion",
-            "pon",
-        ),
-    )
+    track = _extract_after(normalized, _GENERIC_TRACK_PREFIXES)
     if track:
         return VoiceCommand(CommandType.PLAY_TRACK, track, raw_text=text)
 
@@ -250,12 +320,18 @@ def _extract_after(text: str, prefixes: tuple[str, ...]) -> str | None:
 
 
 def _parse_volume(text: str) -> int | None:
-    match = re.search(r"\bvolumen\s+(?:a\s+)?(\d{1,3})\b", text)
+    match = re.search(r"\b(?:volumen|volume)\s+(?:a|al|to|at)?\s*(\d{1,3})\b", text)
     if match:
         return _clamp_volume(int(match.group(1)))
 
     for word, value in _NUMBER_WORDS.items():
-        if f"volumen {word}" in text or f"volumen a {word}" in text:
+        if (
+            f"volumen {word}" in text
+            or f"volumen a {word}" in text
+            or f"volume {word}" in text
+            or f"volume to {word}" in text
+            or f"set volume to {word}" in text
+        ):
             return value
 
     return None
