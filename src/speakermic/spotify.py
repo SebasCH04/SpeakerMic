@@ -304,3 +304,21 @@ def _decode_success_response(content: bytes) -> dict[str, Any]:
         return json.loads(text)
     except json.JSONDecodeError:
         return {}
+
+
+def needs_spotify_login(error: Exception) -> bool:
+    if isinstance(error, SpotifyAuthError):
+        return True
+    if not isinstance(error, SpotifyApiError):
+        return False
+
+    message = str(error).lower()
+    return (
+        error.status_code in {400, 401}
+        and (
+            "refresh token" in message
+            or "invalid_grant" in message
+            or "token expired" in message
+            or "not logged in" in message
+        )
+    )

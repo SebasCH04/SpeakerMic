@@ -12,7 +12,7 @@ def run() -> int:
     app_dir = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path.cwd()
     os.chdir(app_dir)
     setup_logging(app_dir)
-    return main(["tray"])
+    return main(sys.argv[1:] or ["tray"])
 
 
 if __name__ == "__main__":

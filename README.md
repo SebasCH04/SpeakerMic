@@ -30,6 +30,9 @@ pon cancion blinding lights
 pon playlist rock clasico
 ```
 
+SpeakerMic also accepts common variants and imperfect transcriptions such as `silencio`,
+`alto`, `quita pausa`, `pon musica`, `pasala`, `devuelve`, `producir`, or `siguiente`.
+
 ## Requirements
 
 - Windows.
@@ -218,6 +221,12 @@ To start the built exe automatically with Windows:
 - If voice commands do nothing, close other SpeakerMic instances. Only one process should use the mic.
 - If `listen-once` does nothing, close the tray app first.
 - If Spotify commands fail, open Spotify and play a song manually once.
+- If the built exe says it needs Spotify login again, run:
+
+```powershell
+.\scripts\login_built_exe.ps1
+```
+
 - If the exe fails silently, check:
 
 ```powershell

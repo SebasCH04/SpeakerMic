@@ -8,7 +8,7 @@ from .actions import execute_command
 from .commands import parse_command
 from .config import SpeakerMicConfig
 from .speech import create_speaker, spoken_message
-from .spotify import SpotifyApiError, SpotifyAuthError, SpotifyClient
+from .spotify import SpotifyApiError, SpotifyAuthError, SpotifyClient, needs_spotify_login
 from .voice import VoiceCaptureConfig, VoiceRecognitionError, VoskVoiceRecognizer, command_after_wake_word
 
 
@@ -185,7 +185,10 @@ def _listen_and_execute(
     except (SpotifyApiError, SpotifyAuthError, VoiceRecognitionError) as error:
         print(f"SpeakerMic error: {error}")
         logger.exception("SpeakerMic command error")
-        speaker.say("Tuve un problema ejecutando el comando.")
+        if needs_spotify_login(error):
+            speaker.say("Necesito iniciar sesion en Spotify otra vez.")
+        else:
+            speaker.say("Tuve un problema ejecutando el comando.")
     finally:
         lock.release()
 

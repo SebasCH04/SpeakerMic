@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from difflib import SequenceMatcher
 import re
 import unicodedata
 
@@ -39,6 +40,125 @@ _NUMBER_WORDS = {
     "cien": 100,
 }
 
+_PLAY_PHRASES = (
+    "sigue",
+    "seguir",
+    "continua",
+    "continuar",
+    "continue",
+    "reanuda",
+    "reanudar",
+    "reproduce",
+    "reproducir",
+    "play",
+    "dale play",
+    "pon musica",
+    "pon la musica",
+    "quita pausa",
+)
+
+_PLAY_WORDS = (
+    "sigue",
+    "seguir",
+    "continua",
+    "continuar",
+    "continue",
+    "reanuda",
+    "reanudar",
+    "reproduce",
+    "reproducir",
+    "repoduce",
+    "repoducir",
+    "produir",
+    "producir",
+    "produsir",
+    "play",
+)
+
+_PAUSE_PHRASES = (
+    "pausa",
+    "pausar",
+    "deten",
+    "detener",
+    "para",
+    "parar",
+    "stop",
+    "alto",
+    "calla",
+    "silencio",
+    "deten musica",
+    "detener musica",
+    "pausa musica",
+    "pausa la musica",
+)
+
+_PAUSE_WORDS = (
+    "pausa",
+    "pausar",
+    "pausalo",
+    "deten",
+    "detener",
+    "para",
+    "parar",
+    "stop",
+    "alto",
+    "calla",
+    "silencio",
+)
+
+_NEXT_PHRASES = (
+    "siguiente",
+    "proxima",
+    "otra cancion",
+    "otra",
+    "cambia cancion",
+    "cambiar cancion",
+    "salta",
+    "pasala",
+    "pasar cancion",
+    "siguiente cancion",
+)
+
+_NEXT_WORDS = (
+    "siguiente",
+    "sigiente",
+    "siguente",
+    "proxima",
+    "proxina",
+    "otra",
+    "cambia",
+    "cambiar",
+    "salta",
+    "pasala",
+    "pasar",
+)
+
+_PREVIOUS_PHRASES = (
+    "anterior",
+    "previa",
+    "cancion anterior",
+    "regresa",
+    "regresar",
+    "devuelve",
+    "devuelvete",
+    "vuelve",
+    "atras",
+)
+
+_PREVIOUS_WORDS = (
+    "anterior",
+    "previa",
+    "regresa",
+    "regresar",
+    "devuelve",
+    "devuelvete",
+    "vuelve",
+    "atras",
+)
+
+_VOLUME_WORDS_UP = ("sube", "subir", "aumenta", "aumentar", "mas", "alto")
+_VOLUME_WORDS_DOWN = ("baja", "bajar", "disminuye", "disminuir", "menos")
+
 
 def normalize_text(text: str) -> str:
     without_accents = unicodedata.normalize("NFKD", text)
@@ -53,33 +173,44 @@ def parse_command(text: str) -> VoiceCommand | None:
     if not normalized:
         return None
 
-    playlist = _extract_after(normalized, ("pon playlist", "reproduce playlist", "pon la playlist"))
+    playlist = _extract_after(normalized, ("pon playlist", "reproduce playlist", "reproducir playlist", "pon la playlist"))
     if playlist:
         return VoiceCommand(CommandType.PLAY_PLAYLIST, playlist, raw_text=text)
 
-    if _matches_any(normalized, ("pausa", "pausar", "deten", "detener", "para", "parar")):
-        return VoiceCommand(CommandType.PAUSE, raw_text=text)
-
-    if _matches_any(normalized, ("sigue", "seguir", "continua", "continuar", "reproduce", "play")):
+    if _matches_command(normalized, _PLAY_PHRASES, _PLAY_WORDS):
         return VoiceCommand(CommandType.PLAY, raw_text=text)
 
-    if _matches_any(normalized, ("siguiente", "proxima", "otra cancion", "cambia cancion", "salta")):
+    if _matches_command(normalized, _PAUSE_PHRASES, _PAUSE_WORDS):
+        return VoiceCommand(CommandType.PAUSE, raw_text=text)
+
+    if _matches_command(normalized, _NEXT_PHRASES, _NEXT_WORDS):
         return VoiceCommand(CommandType.NEXT, raw_text=text)
 
-    if _matches_any(normalized, ("anterior", "previa", "cancion anterior", "regresa")):
+    if _matches_command(normalized, _PREVIOUS_PHRASES, _PREVIOUS_WORDS):
         return VoiceCommand(CommandType.PREVIOUS, raw_text=text)
 
     volume = _parse_volume(normalized)
     if volume is not None:
         return VoiceCommand(CommandType.SET_VOLUME, volume, raw_text=text)
 
-    if "sube volumen" in normalized or "subir volumen" in normalized or normalized == "sube":
+    if _matches_relative_volume(normalized, _VOLUME_WORDS_UP):
         return VoiceCommand(CommandType.VOLUME_UP, raw_text=text)
 
-    if "baja volumen" in normalized or "bajar volumen" in normalized or normalized == "baja":
+    if _matches_relative_volume(normalized, _VOLUME_WORDS_DOWN):
         return VoiceCommand(CommandType.VOLUME_DOWN, raw_text=text)
 
-    track = _extract_after(normalized, ("pon cancion", "reproduce cancion", "pon la cancion", "reproduce la cancion", "pon"))
+    track = _extract_after(
+        normalized,
+        (
+            "pon cancion",
+            "reproduce cancion",
+            "reproducir cancion",
+            "pon la cancion",
+            "reproduce la cancion",
+            "reproducir la cancion",
+            "pon",
+        ),
+    )
     if track:
         return VoiceCommand(CommandType.PLAY_TRACK, track, raw_text=text)
 
@@ -88,6 +219,26 @@ def parse_command(text: str) -> VoiceCommand | None:
 
 def _matches_any(text: str, phrases: tuple[str, ...]) -> bool:
     return any(text == phrase or phrase in text for phrase in phrases)
+
+
+def _matches_command(text: str, phrases: tuple[str, ...], words: tuple[str, ...]) -> bool:
+    if _matches_any(text, phrases):
+        return True
+
+    text_words = text.split()
+    return any(_word_matches(candidate, words) for candidate in text_words)
+
+
+def _word_matches(candidate: str, words: tuple[str, ...]) -> bool:
+    if len(candidate) < 4:
+        return candidate in words
+
+    for word in words:
+        if candidate == word:
+            return True
+        if len(word) >= 5 and SequenceMatcher(None, candidate, word).ratio() >= 0.82:
+            return True
+    return False
 
 
 def _extract_after(text: str, prefixes: tuple[str, ...]) -> str | None:
@@ -108,6 +259,13 @@ def _parse_volume(text: str) -> int | None:
             return value
 
     return None
+
+
+def _matches_relative_volume(text: str, direction_words: tuple[str, ...]) -> bool:
+    words = text.split()
+    has_direction = any(_word_matches(word, direction_words) for word in words)
+    has_volume = any(_word_matches(word, ("volumen", "volume", "volumenes")) for word in words)
+    return has_direction and (has_volume or len(words) == 1)
 
 
 def _clamp_volume(value: int) -> int:

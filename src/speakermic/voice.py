@@ -7,7 +7,7 @@ from pathlib import Path
 import queue
 import shutil
 import time
-from threading import Event
+from threading import Event, Lock
 from urllib.request import urlretrieve
 import zipfile
 
@@ -28,28 +28,27 @@ class VoiceCaptureConfig:
     model_path: Path
     sample_rate: int = 16000
     timeout_seconds: int = 8
+    blocksize: int = 2000
 
 
 class VoskVoiceRecognizer:
     def __init__(self, config: VoiceCaptureConfig) -> None:
         self.config = config
+        self._model = None
+        self._model_lock = Lock()
 
     def listen_once(self) -> str:
         logger.info("listen_once starting; model_path=%s", self.config.model_path)
         try:
             import sounddevice as sd
-            from vosk import KaldiRecognizer, Model
+            from vosk import KaldiRecognizer
         except ImportError as error:
             raise VoiceRecognitionError(
                 "Voice dependencies are not installed. Run `python -m pip install -r requirements.txt`."
             ) from error
 
-        if not self.config.model_path.exists():
-            raise VoiceRecognitionError(f"Vosk model not found: {self.config.model_path}")
-
         audio_queue: queue.Queue[bytes] = queue.Queue()
-        model = Model(str(self.config.model_path))
-        recognizer = KaldiRecognizer(model, self.config.sample_rate)
+        recognizer = KaldiRecognizer(self._load_model(), self.config.sample_rate)
 
         def callback(indata, frames, time_info, status) -> None:
             if status:
@@ -59,7 +58,7 @@ class VoskVoiceRecognizer:
         deadline = time.monotonic() + self.config.timeout_seconds
         with sd.RawInputStream(
             samplerate=self.config.sample_rate,
-            blocksize=8000,
+            blocksize=self.config.blocksize,
             dtype="int16",
             channels=1,
             callback=callback,
@@ -92,18 +91,14 @@ class VoskVoiceRecognizer:
         logger.info("listen_until_activation starting; wake_word=%r model_path=%s", wake_word, self.config.model_path)
         try:
             import sounddevice as sd
-            from vosk import KaldiRecognizer, Model
+            from vosk import KaldiRecognizer
         except ImportError as error:
             raise VoiceRecognitionError(
                 "Voice dependencies are not installed. Run `python -m pip install -r requirements.txt`."
             ) from error
 
-        if not self.config.model_path.exists():
-            raise VoiceRecognitionError(f"Vosk model not found: {self.config.model_path}")
-
         audio_queue: queue.Queue[bytes] = queue.Queue()
-        model = Model(str(self.config.model_path))
-        recognizer = KaldiRecognizer(model, self.config.sample_rate)
+        recognizer = KaldiRecognizer(self._load_model(), self.config.sample_rate)
         normalized_wake_word = normalize_text(wake_word)
 
         def callback(indata, frames, time_info, status) -> None:
@@ -113,7 +108,7 @@ class VoskVoiceRecognizer:
 
         with sd.RawInputStream(
             samplerate=self.config.sample_rate,
-            blocksize=8000,
+            blocksize=self.config.blocksize,
             dtype="int16",
             channels=1,
             callback=callback,
@@ -144,6 +139,25 @@ class VoskVoiceRecognizer:
 
         logger.info("wake listener stopped")
         return None
+
+    def _load_model(self):
+        if not self.config.model_path.exists():
+            raise VoiceRecognitionError(f"Vosk model not found: {self.config.model_path}")
+
+        with self._model_lock:
+            if self._model is None:
+                logger.info("loading Vosk model from %s", self.config.model_path)
+                try:
+                    from vosk import Model
+                except ImportError as error:
+                    raise VoiceRecognitionError(
+                        "Voice dependencies are not installed. Run `python -m pip install -r requirements.txt`."
+                    ) from error
+
+                self._model = Model(str(self.config.model_path))
+                logger.info("Vosk model loaded")
+
+            return self._model
 
 
 def download_spanish_model(

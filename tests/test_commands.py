@@ -7,11 +7,24 @@ class CommandParserTests(unittest.TestCase):
     def test_pause_variants(self):
         self.assertEqual(parse_command("pausa").type, CommandType.PAUSE)
         self.assertEqual(parse_command("por favor detener musica").type, CommandType.PAUSE)
+        self.assertEqual(parse_command("silencio").type, CommandType.PAUSE)
+        self.assertEqual(parse_command("alto").type, CommandType.PAUSE)
+        self.assertEqual(parse_command("pausalo").type, CommandType.PAUSE)
 
     def test_transport_commands(self):
         self.assertEqual(parse_command("siguiente cancion").type, CommandType.NEXT)
         self.assertEqual(parse_command("cancion anterior").type, CommandType.PREVIOUS)
         self.assertEqual(parse_command("continua").type, CommandType.PLAY)
+        self.assertEqual(parse_command("quita pausa").type, CommandType.PLAY)
+        self.assertEqual(parse_command("pon musica").type, CommandType.PLAY)
+        self.assertEqual(parse_command("pasala").type, CommandType.NEXT)
+        self.assertEqual(parse_command("devuelve").type, CommandType.PREVIOUS)
+
+    def test_common_transcription_errors(self):
+        self.assertEqual(parse_command("produir").type, CommandType.PLAY)
+        self.assertEqual(parse_command("repoducir").type, CommandType.PLAY)
+        self.assertEqual(parse_command("sigiente").type, CommandType.NEXT)
+        self.assertEqual(parse_command("proxina").type, CommandType.NEXT)
 
     def test_volume_number(self):
         command = parse_command("volumen a 35")
@@ -22,6 +35,12 @@ class CommandParserTests(unittest.TestCase):
         command = parse_command("pon volumen cincuenta")
         self.assertEqual(command.type, CommandType.SET_VOLUME)
         self.assertEqual(command.value, 50)
+
+    def test_relative_volume_variants(self):
+        self.assertEqual(parse_command("aumenta volumen").type, CommandType.VOLUME_UP)
+        self.assertEqual(parse_command("subir volumen").type, CommandType.VOLUME_UP)
+        self.assertEqual(parse_command("disminuye volumen").type, CommandType.VOLUME_DOWN)
+        self.assertEqual(parse_command("bajar volumen").type, CommandType.VOLUME_DOWN)
 
     def test_volume_is_clamped(self):
         command = parse_command("volumen 500")
