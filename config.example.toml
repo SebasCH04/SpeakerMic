@@ -1,0 +1,20 @@
+[app]
+hotkey = "<ctrl>+<alt>+<space>"
+voice_language = "es"
+voice_model_path = "models/vosk-model-small-es-0.42"
+volume_step = 10
+
+[speech]
+enabled = true
+voice_name_contains = "spanish"
+rate = 175
+volume = 1.0
+
+[activation]
+wake_word_enabled = false
+wake_word = "consola"
+
+[spotify]
+client_id = "paste-your-spotify-client-id-here"
+redirect_uri = "http://127.0.0.1:8888/callback"
+preferred_device_name = ""

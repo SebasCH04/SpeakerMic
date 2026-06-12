@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speakermic"
+version = "0.1.0"
+description = "Windows voice controls for Spotify using a headset microphone."
+readme = "README.md"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "pynput>=1.7.7",
+  "pystray>=0.19.5",
+  "Pillow>=10.0",
+  "pyttsx3>=2.90",
+  "sounddevice>=0.4.6",
+  "vosk>=0.3.45",
+]
+
+[project.scripts]
+speakermic = "speakermic.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
